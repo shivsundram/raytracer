@@ -65,7 +65,7 @@ Film::Film(int width1, int height1){
  };
 
 
-
+ //lalalalal
 
  int main(int argc, char *argv[]){
 	 int height = 512;
@@ -75,7 +75,7 @@ Film::Film(int width1, int height1){
 	 for (unsigned i = 0; i < width; i++){
 		 for (unsigned j = 0; j < height; j++){
 			 //generate sample
-			 negative.commit(i, j, 200, 200, 200);
+			 negative.commit(i, j, 255*i/width, 255*j/height, 200);
 		 }
 	 }
 	 negative.writeImage();
