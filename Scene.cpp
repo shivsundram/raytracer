@@ -4,6 +4,11 @@
 #include "stdafx.h"
 #include "lodepng.h"
 #include <iostream>
+#include <Eigen/Core>
+
+#include <Eigen/Dense>
+using namespace Eigen;
+using namespace std;
 
 
 //CODE FOR WRITING TO AN IMAGE FILE (LODEPNG LIBRARY), 
@@ -16,7 +21,7 @@
 //"The image argument has width * height RGBA pixels or width * height * 4 bytes"
 
 
-//
+//FILM CLASS
 class Film{
 	public:
 		Film(int width, int height);
@@ -55,6 +60,58 @@ Film::Film(int width1, int height1){
 		image[4 * width * y + 4 * x + 3] = 255; //AOLPHA: MAINTAIN AT 255
  }
 
+ //END FILM CLASS
+
+
+ //GLOBAL VARIABLES. EYE AND FOCAL PLANE
+ Vector3f eye(50.0f, 50.0f, -300.0f); 
+ float focal_plane=0.0f; 
+
+
+ //RAY CLASS
+ class Ray{
+	public:
+	 Vector3f source;
+	 Vector3f direction;
+	 float t_min, t_max;
+	 Ray(Vector3f src, Vector3f dir, float min, float max);
+ };
+
+ Ray::Ray(Vector3f src, Vector3f dir, float min, float max){
+	 source = src;
+	 direction = dir;
+	 t_min = min;
+	 t_max = max; 
+ }
+ 
+ Ray generateRay(float i, float j){
+	 Vector3f pixel_loc = Vector3f(i + .5f, j + .5f, focal_plane);
+	 Vector3f direction = pixel_loc - eye;
+	 direction.normalize();
+	 ///FIX ME
+	 Ray q(eye, direction, focal_plane, 10000000.0f);//MAY NEED TO BE INCREASED
+	 return q; 
+	 //END FIX ME
+ }
+ 
+ //END RAY CLASS
+
+ class Color{
+ public:
+	 float red;
+	 float blue; 
+	 float green;
+	 Color(float r, float g, float b);
+ };
+
+ Color::Color(float r, float g, float b){
+	 red = r;
+	 green = g;
+	 blue = b; 
+ }
+
+
+//SCENE CLASS
  class Scene{
 	public:
 		Film negative;
@@ -63,25 +120,107 @@ Film::Film(int width1, int height1){
 		float depth;
 
  };
+//END SCENE CLASS
+
+ //Sphere class
+ class Sphere{
+ public:
+	 float radius;
+	 Vector3f center;
+	 Sphere(Vector3f, float);
+	 int hit(Ray r);
+ };
+
+ Sphere::Sphere(Vector3f c, float r){
+	 center = c;
+	 radius = r; 
+ }
+
+ int Sphere::hit(Ray r){
+	 Vector3f d = r.direction;
+	 Vector3f e = r.source;
+	 Vector3f c = center; 
+	 Vector3f ec = e - c; 
+
+	 float term1 = (d.dot(ec))*(d.dot(ec));
+	 float term2 = (d.dot(d))*((ec).dot(ec) - radius*radius);
+	 float discr = term1 - term2; 
+	 if (discr >= 0.0f){
+		 return 1;
+	 }
+	 return 0; 
+ }
+
+ Color trace(Ray ray, Sphere sphere){
+	 float red = 200;
+	 float blue = 100;
+	 float green = 155;
+	 if (sphere.hit(ray)==1){
+		 return Color(red, blue, green);
+	 }
+	 return Color(0.0f, 0.0f, 0.0f);
+ }
 
 
- //lalalalal
 
  int main(int argc, char *argv[]){
-	 int height = 512;
-	 int width = 512; 
+	 int height = 100;
+	 int width = 100; 
 	 Film negative(width, height);
-	 
-	 for (unsigned i = 0; i < width; i++){
-		 for (unsigned j = 0; j < height; j++){
-			 //generate sample
-			 negative.commit(i, j, 255*i/width, 255*j/height, 200);
+	 Sphere test(Vector3f(50.0f, 50.0f, 150.0f), 50.0f);
+	 for (int i = 0; i < width; i++){
+		 for (int j = 0; j < height; j++){
+			 Ray temp = generateRay(i, j);
+			 Color result = trace(temp, test);
+			 negative.commit(i, j, result.red, result.green, result.blue);
+			 //negative.commit(i, j, 255*i/width, 255*j/height, 200) activate this for pretty colors
 		 }
 	 }
 	 negative.writeImage();
+	
+	 /*
+	 Vector3f v(1.0f, 2.0f, 3.0f);
+	 Vector3f w(0.0f, 1.0f, 2.0f);
+	 int dotty = v.dot(w);
+	 Vector3f sub = v - w; 
+	 */
+	// Sphere test(Vector3f(5.0f, 5.0f, 5.0f), 5.0f);
+	// Ray trial(Vector3f(5.0f+3.0f,5.0f+4.1f, 0.0f), Vector3f(0.0f, 0.0f, 1.0f), 1.0f, 300.0f);
+	 //int hh = test.hit(trial);
+	// cout << "Dot product: " << hh << endl;
 	 
+
 	 return 0; 
  }
+
+
+
+
+
+
+
+ /*
+
+ class Parent {
+
+ public:
+ void doShit()
+ {
+ cout << "message " << "parent" << endl;
+ }
+
+ };
+
+
+ class Child: public Parent {
+
+ public:
+ void doShit()
+ {
+ cout << "message " << "child" << endl;
+ }
+ */
+ 
 
 
 
