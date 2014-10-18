@@ -65,13 +65,13 @@ Film::Film(int width1, int height1){
 
  //GLOBAL VARIABLES. EYE AND FOCAL PLANE
  Vector3f eye(0.0f, 0.0f, 0.0f); 
- Vector3f UL(-1.0f, 1.0f, -1.0f);
- Vector3f UR(1.0f, 1.0f, -1.0f);
- Vector3f LL(1.0f, -1.0f, -1.0f);
- Vector3f LR(-1.0f, -1.0f, -1.0f);
+ Vector3f UL(-1.0f, 1.0f, 0.0f);
+ Vector3f UR(1.0f, 1.0f, -2.0f);
+ Vector3f LL(1.0f, -1.0f, 0.0f);
+ Vector3f LR(-1.0f, -1.0f, 0.0f);
  Vector3f xvec;
  Vector3f yvec;
-  float focal_plane=-1.0f; 
+ // float focal_plane=-1.0f; 
 
 
  //RAY CLASS
@@ -91,11 +91,12 @@ Film::Film(int width1, int height1){
  }
  
  Ray generateRay(float i, float j){
-	 Vector3f pixel_loc = Vector3f(UL[0]+xvec[0]*i/100,UL[0]+ yvec[1]*j/100, focal_plane);
+	 float focalplane = (UL +(xvec * i / 100)+(yvec * j / 100))[2];
+	 Vector3f pixel_loc = Vector3f(UL[0]+xvec[0]*i/100,UL[0]+ yvec[1]*j/100,focalplane );
 	 Vector3f direction = pixel_loc - eye;
 	 direction.normalize();
 	 ///FIX ME
-	 Ray q(eye, direction, focal_plane, 10000000.0f);//MAY NEED TO BE INCREASED
+	 Ray q(eye, direction, focalplane, 10000000.0f);//MAY NEED TO BE INCREASED
 	 return q; 
 	 //END FIX ME
  }
