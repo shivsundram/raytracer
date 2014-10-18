@@ -64,8 +64,14 @@ Film::Film(int width1, int height1){
 
 
  //GLOBAL VARIABLES. EYE AND FOCAL PLANE
- Vector3f eye(50.0f, 50.0f, -300.0f); 
- float focal_plane=0.0f; 
+ Vector3f eye(0.0f, 0.0f, 0.0f); 
+ Vector3f UL(-1.0f, 1.0f, -1.0f);
+ Vector3f UR(1.0f, 1.0f, -1.0f);
+ Vector3f LL(1.0f, -1.0f, -1.0f);
+ Vector3f LR(-1.0f, -1.0f, -1.0f);
+ Vector3f xvec;
+ Vector3f yvec;
+  float focal_plane=-1.0f; 
 
 
  //RAY CLASS
@@ -85,7 +91,7 @@ Film::Film(int width1, int height1){
  }
  
  Ray generateRay(float i, float j){
-	 Vector3f pixel_loc = Vector3f(i + .5f, j + .5f, focal_plane);
+	 Vector3f pixel_loc = Vector3f(UL[0]+xvec[0]*i/100,UL[0]+ yvec[1]*j/100, focal_plane);
 	 Vector3f direction = pixel_loc - eye;
 	 direction.normalize();
 	 ///FIX ME
@@ -111,6 +117,17 @@ Film::Film(int width1, int height1){
  }
 
 
+ class Dlight{
+	 Vector3f direction;
+ };
+
+ class Plight{
+	 Vector3f source;
+ };
+
+
+
+
 //SCENE CLASS
  class Scene{
 	public:
@@ -121,6 +138,8 @@ Film::Film(int width1, int height1){
 
  };
 //END SCENE CLASS
+
+
 
  //Sphere class
  class Sphere{
@@ -166,8 +185,13 @@ Film::Film(int width1, int height1){
  int main(int argc, char *argv[]){
 	 int height = 100;
 	 int width = 100; 
+
+	 xvec = UR - UL;
+	 yvec = UL - LL;
+
+
 	 Film negative(width, height);
-	 Sphere test(Vector3f(50.0f, 50.0f, 150.0f), 50.0f);
+	 Sphere test(Vector3f(0.0f, 0.0f, -2.0f), 1.0f);
 	 for (int i = 0; i < width; i++){
 		 for (int j = 0; j < height; j++){
 			 Ray temp = generateRay(i, j);
@@ -188,7 +212,10 @@ Film::Film(int width1, int height1){
 	// Ray trial(Vector3f(5.0f+3.0f,5.0f+4.1f, 0.0f), Vector3f(0.0f, 0.0f, 1.0f), 1.0f, 300.0f);
 	 //int hh = test.hit(trial);
 	// cout << "Dot product: " << hh << endl;
-	 
+
+	 float num = UL[0];
+	 cout << "Dot product: " << num << endl;
+	 system("PAUSE");
 
 	 return 0; 
  }
