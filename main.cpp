@@ -74,23 +74,17 @@ Color trace(const Ray& ray, const vector<Primitive*, Eigen::aligned_allocator<Pr
     float closest_t = numeric_limits<float>::infinity();
     Intersection closestInter, intersect;
     bool isPrimitiveHit = false;
-    int closeid=-1;
+    int prevHitId=-1;
 
     for (int i = 0; i < primitives.size(); i++) {
         intersect = primitives[i]->intersect(ray);
-       /*
-        if (intersect.local.tHit<.11){
-            cout<<"holy shit"<<endl; 
-        }
-        if (intersect.local.tHit>.11){
-            cout<<"holy crap"<<endl; 
-        }*/
-        if (intersect.local.isHit && !(primitives[i]==primitives[id])){
+
+        if (intersect.local.isHit && !(i==id) ){
             isPrimitiveHit = true;
             if ((intersect.local.tHit < closest_t)){
                 closest_t = intersect.local.tHit;
                 closestInter = intersect;
-                closeid=i; 
+                prevHitId=i; 
             }
         }
     }
@@ -145,7 +139,6 @@ Color trace(const Ray& ray, const vector<Primitive*, Eigen::aligned_allocator<Pr
             break;
         }
 
-        // reflected
         Eigen::Vector4f r = -l + 2 * l.dot(n) * n;
         r.normalize();
 
@@ -162,15 +155,15 @@ Color trace(const Ray& ray, const vector<Primitive*, Eigen::aligned_allocator<Pr
         }
     }
 
-    n=-1*n;
+    //reflections
     Eigen::Vector4f rd = -v + (2 * (v.dot(n)))*n;
     rd.normalize(); 
-    Ray reflect(surfacepoint, rd, 0.2f, 9999999999.0f);
+    Ray reflect(surfacepoint, rd, 0.0001,  numeric_limits<float>::infinity());
     
     rgbAmbient = (rgbAmbient + globalAmbient.getColor()) * primitiveBRDF.ambient;
     rgbDiffuse = rgbDiffuse * primitiveBRDF.diffuse ;
     rgbSpecular = rgbSpecular * primitiveBRDF.specular;
-    return rgbDiffuse + rgbSpecular + rgbAmbient + primitiveBRDF.reflective*trace(reflect,primitives, surfacepoint, depth-1, closeid);// + rgbReflect;
+    return rgbDiffuse + rgbSpecular + rgbAmbient + primitiveBRDF.reflective*trace(reflect,primitives, surfacepoint, depth-1, prevHitId);// + rgbReflect;
     
   //  return rgbDiffuse + rgbSpecular + rgbAmbient + rgbReflect;// + rgbReflect;
 }
