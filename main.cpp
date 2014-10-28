@@ -41,6 +41,7 @@ vector<Primitive*, Eigen::aligned_allocator<Primitive*> > primitives;
 vector<Transformation*, Eigen::aligned_allocator<Transformation*> > transforms;
 vector<Light*, Eigen::aligned_allocator<Light*> > lights;
 
+
 Material currentMaterial;
 ALight globalAmbient(Color(0.0f, 0.0f, 0.0f));
 
@@ -63,7 +64,7 @@ Color trace2(const Ray& ray, const Primitive& prima){
 }
 
 
-Color trace(const Ray& ray, const vector<Primitive*, Eigen::aligned_allocator<Primitive*> >& primitives, Eigen::Vector4f& thisEye, int depth){
+Color trace(const Ray& ray, const vector<Primitive*, Eigen::aligned_allocator<Primitive*> >& primitives, Eigen::Vector4f& thisEye, int depth, int id){
 
     if (depth==0){
         return Color(0.0f, 0.0f, 0.0f);
@@ -73,14 +74,23 @@ Color trace(const Ray& ray, const vector<Primitive*, Eigen::aligned_allocator<Pr
     float closest_t = numeric_limits<float>::infinity();
     Intersection closestInter, intersect;
     bool isPrimitiveHit = false;
+    int closeid=-1;
 
     for (int i = 0; i < primitives.size(); i++) {
         intersect = primitives[i]->intersect(ray);
-        if (intersect.local.isHit){
+       /*
+        if (intersect.local.tHit<.11){
+            cout<<"holy shit"<<endl; 
+        }
+        if (intersect.local.tHit>.11){
+            cout<<"holy crap"<<endl; 
+        }*/
+        if (intersect.local.isHit && !(primitives[i]==primitives[id])){
             isPrimitiveHit = true;
-            if (intersect.local.tHit < closest_t){
+            if ((intersect.local.tHit < closest_t)){
                 closest_t = intersect.local.tHit;
                 closestInter = intersect;
+                closeid=i; 
             }
         }
     }
@@ -152,20 +162,17 @@ Color trace(const Ray& ray, const vector<Primitive*, Eigen::aligned_allocator<Pr
         }
     }
 
-
-    Eigen::Vector4f rd = -v + 2 * (v.dot(n))*n;
-    rd[3]=0;
+    n=-1*n;
+    Eigen::Vector4f rd = -v + (2 * (v.dot(n)))*n;
     rd.normalize(); 
-    Ray reflect(surfacepoint, -rd, 0.0001f, 9999999999.0f);
-    rgbReflect =  primitiveBRDF.reflective*trace(reflect,primitives, surfacepoint, depth-1);
-        
-
-
+    Ray reflect(surfacepoint, rd, 0.2f, 9999999999.0f);
+    
     rgbAmbient = (rgbAmbient + globalAmbient.getColor()) * primitiveBRDF.ambient;
     rgbDiffuse = rgbDiffuse * primitiveBRDF.diffuse ;
     rgbSpecular = rgbSpecular * primitiveBRDF.specular;
-
-    return rgbDiffuse + rgbSpecular + rgbAmbient + rgbReflect;// + rgbReflect;
+    return rgbDiffuse + rgbSpecular + rgbAmbient + primitiveBRDF.reflective*trace(reflect,primitives, surfacepoint, depth-1, closeid);// + rgbReflect;
+    
+  //  return rgbDiffuse + rgbSpecular + rgbAmbient + rgbReflect;// + rgbReflect;
 }
 
 
@@ -356,7 +363,7 @@ int main(int argc, const char * argv[]) {
 
 
             Ray temp = generateRay((float) i / width, (float) j / height);
-            Color result = trace(temp, primitives, eye, 2) * 255.0f;
+            Color result = trace(temp, primitives, eye, 2, -1) * 255.0f;
             //Color result = trace2(temp, *triPrim) * 255.0f; //for testing triangle intersecitons
             negative.commit(i, height - j - 1, fmin(result.getRed(), 255.0f), fmin(result.getGreen(), 255.0f), fmin(result.getBlue(), 255.0f));
             //FIX ME: currently only supporting one sample per pixel
