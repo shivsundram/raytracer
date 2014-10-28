@@ -28,11 +28,11 @@ using namespace std;
 
 /************ FROM SCENE CLASS ************/
 
-Eigen::Vector4f eye(0.0f, 0.0f, 0.0f, 0.0f);
+Eigen::Vector4f eye(0.0f, 0.0f, 0.0f, 1.0f);
 Eigen::Vector4f UL(-1.0f, 1.0f, -1.0f, 1.0f);
 Eigen::Vector4f UR(1.0f, 1.0f, -1.0f, 1.0f);
-Eigen::Vector4f LL(-1.0f, -1.0f, -1.0f, 1.0f);
-Eigen::Vector4f LR(1.0f, -1.0f, -1.0f, 1.0f);
+Eigen::Vector4f LL(1.0f, -1.0f, -1.0f, 1.0f);
+Eigen::Vector4f LR(-1.0f, -1.0f, -1.0f, 1.0f);
 Eigen::Vector4f xvec; // horizontal basis vector of focal plane
 Eigen::Vector4f yvec; // vertical basis vector of focal plane
 
@@ -40,7 +40,6 @@ Eigen::Vector4f yvec; // vertical basis vector of focal plane
 vector<Primitive*, Eigen::aligned_allocator<Primitive*> > primitives;
 vector<Transformation*, Eigen::aligned_allocator<Transformation*> > transforms;
 vector<Light*, Eigen::aligned_allocator<Light*> > lights;
-
 
 Material currentMaterial;
 ALight globalAmbient(Color(0.0f, 0.0f, 0.0f));
@@ -55,21 +54,12 @@ Ray generateRay(float scaleWidth, float scaleHeight) {
 }
 
 
-Color trace2(const Ray& ray, const Primitive& prima){
-    Intersection intersect = prima.intersect(ray);
-    if (intersect.local.isHit){
-        return Color(200.0f, 00.0f, 100.0f);
-    }
-    return Color(0.0f, 0.0f, 0.0f); 
-}
-
-
 Color trace(const Ray& ray, const vector<Primitive*, Eigen::aligned_allocator<Primitive*> >& primitives, Eigen::Vector4f& thisEye, int depth, int id){
 
     if (depth==0){
         return Color(0.0f, 0.0f, 0.0f);
     }
- 
+
 
     float closest_t = numeric_limits<float>::infinity();
     Intersection closestInter, intersect;
@@ -78,10 +68,9 @@ Color trace(const Ray& ray, const vector<Primitive*, Eigen::aligned_allocator<Pr
 
     for (int i = 0; i < primitives.size(); i++) {
         intersect = primitives[i]->intersect(ray);
-
-        if (intersect.local.isHit && !(i==id) ){
+        if (intersect.local.isHit && !(i==id)){
             isPrimitiveHit = true;
-            if ((intersect.local.tHit < closest_t)){
+            if (intersect.local.tHit < closest_t){
                 closest_t = intersect.local.tHit;
                 closestInter = intersect;
                 prevHitId=i; 
@@ -98,8 +87,6 @@ Color trace(const Ray& ray, const vector<Primitive*, Eigen::aligned_allocator<Pr
     Color rgbSpecular(0.0f, 0.0f, 0.0f);
     Color rgbDiffuse(0.0f, 0.0f, 0.0f);
     Color rgbAmbient(0.0f, 0.0f, 0.0f);
-    Color rgbReflect(0.0f, 0.0f, 0.0f);
-
 
     Eigen::Vector4f surfacepoint = closestInter.local.point;
 
@@ -107,7 +94,7 @@ Color trace(const Ray& ray, const vector<Primitive*, Eigen::aligned_allocator<Pr
     Eigen::Vector4f n = closestInter.local.normal;
 
     // view
-    Eigen::Vector4f v = thisEye-surfacepoint;
+    Eigen::Vector4f v = surfacepoint - thisEye;
     v.normalize();
 
     Material primitiveBRDF = closestInter.primitive->getBRDF();
@@ -126,7 +113,7 @@ Color trace(const Ray& ray, const vector<Primitive*, Eigen::aligned_allocator<Pr
         // shadows
         bool isShadowHit = false;
         Ray shadowRay(surfacepoint, l, 0.0f, numeric_limits<float>::infinity());
-        for (int x = 0; x < primitives.size(); x++){
+        for (int x = 0; x < primitives.size(); x++) {
             intersect = primitives[x]->intersect(shadowRay);
             bool isHit = intersect.primitive != NULL;
             if (closestInter.primitive != intersect.primitive && isHit && intersect.local.tHit > shadowRay.t_min){
@@ -139,7 +126,8 @@ Color trace(const Ray& ray, const vector<Primitive*, Eigen::aligned_allocator<Pr
             break;
         }
 
-        Eigen::Vector4f r = -l + 2 * l.dot(n) * n;
+        // reflected
+        Eigen::Vector4f r = l - 2 * l.dot(n) * n;
         r.normalize();
 
         specularDot = r.dot(v);
@@ -155,17 +143,15 @@ Color trace(const Ray& ray, const vector<Primitive*, Eigen::aligned_allocator<Pr
         }
     }
 
-    //reflections
-    Eigen::Vector4f rd = -v + (2 * (v.dot(n)))*n;
-    rd.normalize(); 
-    Ray reflect(surfacepoint, rd, 0.0001,  numeric_limits<float>::infinity());
-    
     rgbAmbient = (rgbAmbient + globalAmbient.getColor()) * primitiveBRDF.ambient;
     rgbDiffuse = rgbDiffuse * primitiveBRDF.diffuse ;
     rgbSpecular = rgbSpecular * primitiveBRDF.specular;
-    return rgbDiffuse + rgbSpecular + rgbAmbient + primitiveBRDF.reflective*trace(reflect,primitives, surfacepoint, depth-1, prevHitId);// + rgbReflect;
-    
-  //  return rgbDiffuse + rgbSpecular + rgbAmbient + rgbReflect;// + rgbReflect;
+
+    Eigen::Vector4f rd = v - (2 * (v.dot(n)))*n;
+    rd.normalize(); 
+    Ray reflect(surfacepoint, rd, 0.0001,  numeric_limits<float>::infinity());
+
+    return rgbDiffuse + rgbSpecular + rgbAmbient+primitiveBRDF.reflective*trace(reflect,primitives, surfacepoint, depth-1, prevHitId);
 }
 
 
@@ -182,9 +168,11 @@ void parseLine(const string& line) {
     istringstream iss(line);
     vector<string> tokens((istream_iterator<string>(iss)), istream_iterator<string>());
 
-    Transformation test;
+    if (tokens.size() == 0) {
+        return;
+    }
 
-    if (tokens[0] == "cam") {           
+    if (tokens[0] == "cam") {
         checkNumArguments(tokens, 15);
         eye = Eigen::Vector4f(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()), 1.0f);
         LL = Eigen::Vector4f(atof(tokens[4].c_str()), atof(tokens[5].c_str()), atof(tokens[6].c_str()), 1.0f);
@@ -198,21 +186,19 @@ void parseLine(const string& line) {
 
         Sphere* sphere = new Sphere(Eigen::Vector4f(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()), 1.0f), atof(tokens[4].c_str()));
 
-
-        cout << *currentTransform << endl;
-        GeometricPrimitive *spherePrim = new GeometricPrimitive(sphere, currentMaterial, currentTransform);
-        primitives.push_back(spherePrim);
+        primitives.push_back(new GeometricPrimitive(sphere, currentMaterial, currentTransform));
 
     } else if (tokens[0] == "tri") {
         checkNumArguments(tokens, 9);
         Transformation* currentTransform = new Transformation();
         currentTransform = currentTransform->compose(transforms);
-        Triangle* triangle= new Triangle(Eigen::Vector4f(atof(tokens[1].c_str()), atof(tokens[2].c_str()),atof(tokens[3].c_str()), 1.0f), 
-                                        Eigen::Vector4f(atof(tokens[4].c_str()), atof(tokens[5].c_str()),atof(tokens[6].c_str()), 1.0f),
-                                        Eigen::Vector4f(atof(tokens[7].c_str()), atof(tokens[8].c_str()),atof(tokens[9].c_str()), 1.0f));
-        cout << *currentTransform << endl;
-        GeometricPrimitive *trianglePrim = new GeometricPrimitive(triangle, currentMaterial, currentTransform);
-        primitives.push_back(trianglePrim);
+        Eigen::Vector3f a(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
+        Eigen::Vector3f b(atof(tokens[4].c_str()), atof(tokens[5].c_str()), atof(tokens[6].c_str()));
+        Eigen::Vector3f c(atof(tokens[7].c_str()), atof(tokens[8].c_str()), atof(tokens[9].c_str()));
+
+        Triangle* triangle = new Triangle(a, b, c);
+
+        primitives.push_back(new GeometricPrimitive(triangle, currentMaterial, currentTransform));
 
     } else if (tokens[0] == "obj") {
         checkNumArguments(tokens, 1);
@@ -242,20 +228,15 @@ void parseLine(const string& line) {
         currentMaterial.specularExponent = atof(tokens[10].c_str());
         currentMaterial.reflective = Color(atof(tokens[11].c_str()), atof(tokens[12].c_str()), atof(tokens[13].c_str()));
     } else if (tokens[0] == "xft") {
-        cout << "xft" << endl;
         checkNumArguments(tokens, 3);
         transforms.push_back(new Translation(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str())));
     } else if (tokens[0] == "xfr") {
-        cout << "xfr" << endl;
         checkNumArguments(tokens, 3);
         transforms.push_back(new Rotation(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str())));
-        cout << test << endl;
     } else if (tokens[0] == "xfs") {
-        cout << "xfs" << endl;
         checkNumArguments(tokens, 3);
         transforms.push_back(new Scaling(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str())));
     } else if (tokens[0] == "xfz") {
-        cout << "xfz" << endl;
         checkNumArguments(tokens, 0);
         transforms.clear();
     } else {
@@ -303,6 +284,7 @@ int main(int argc, const char * argv[]) {
         fin.open(argv[1]);
 
         if (!fin.good()) {
+            cout << "File \"" << argv[1] << "\" does not exists" << endl;
             return 1;
         }
 
@@ -322,6 +304,7 @@ int main(int argc, const char * argv[]) {
 
     int height = 1000;
     int width = 1000;
+    int depth= 2; 
 
     xvec = UR - UL;
     yvec = UL - LL;
@@ -342,22 +325,8 @@ int main(int argc, const char * argv[]) {
                 cout << (int) (pixelCount * totalPixelsScale) << "%" << endl;
             }
 
-            /* for testing triangle hits
-            Triangle* triangle= new Triangle(Eigen::Vector4f(-.5f, -.433, 2.0f, 1.0f),Eigen::Vector4f(.5f, -.433, 2.0f, 1.0f),Eigen::Vector4f(0.0f, .433, 2.0f, 1.0f) );
-            Transformation* currentTransform = new Transformation();
-            currentTransform = currentTransform->compose(transforms);
-            Material currentMaterial;
-            GeometricPrimitive *triPrim = new GeometricPrimitive(triangle, currentMaterial, currentTransform);
-
-            Eigen::Vector4f* source = new Eigen::Vector4f(0.0f, 0.0f, 0.0f, 0.0f);
-            PLight* pointLight = new PLight(Color(200.0f, 200.0f, 200.0f), *source, 1.0f);
-            lights.push_back(pointLight);
-            */
-
-
             Ray temp = generateRay((float) i / width, (float) j / height);
-            Color result = trace(temp, primitives, eye, 2, -1) * 255.0f;
-            //Color result = trace2(temp, *triPrim) * 255.0f; //for testing triangle intersecitons
+            Color result = trace(temp, primitives, eye, depth, -1) * 255.0f;
             negative.commit(i, height - j - 1, fmin(result.getRed(), 255.0f), fmin(result.getGreen(), 255.0f), fmin(result.getBlue(), 255.0f));
             //FIX ME: currently only supporting one sample per pixel
             //negative.commit(i, j, 255*i/width, 255*j/height, 200) activate this for pretty colors

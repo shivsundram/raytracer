@@ -13,9 +13,16 @@ class Shape
 {
 public:
     Shape() {};
+    virtual ~Shape() = 0;
     virtual bool isHit(const Ray& ray) const = 0;
     virtual LocalGeo intersect(const Ray& ray) const = 0;
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
+
+
+inline Shape::~Shape() { }
+
+
 
 
 class Sphere : public Shape
@@ -23,6 +30,7 @@ class Sphere : public Shape
 public:
     Sphere();
     Sphere(const Eigen::Vector4f& inOrigin, float inRadius);
+    ~Sphere();
     bool isHit(const Ray& ray) const;
     LocalGeo intersect(const Ray& ray) const;
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -30,6 +38,9 @@ private:
     Eigen::Vector4f origin;
     float radius;
 };
+
+Sphere::~Sphere() {
+}
 
 
 Sphere::Sphere() {
@@ -68,20 +79,23 @@ LocalGeo Sphere::intersect(const Ray& ray) const {
     float term1 = b * b;
     float term2 = dItself * (ec.dot(ec) - radius * radius);
     float discr = term1 - term2;
+    float t1 = (-b - sqrt(discr)) / dItself;
 
-    if (discr < 0.0f) {
+    if (discr < 0.0f || t1<0) {
         local.isHit = false;
-        local.tHit = 0.0f;
     } else {
-        float t1 = (-b - sqrt(discr)) / dItself;
+        
+        if (t1 < ray.t_min || t1 > ray.t_max) {
+            local.isHit = false;
+            return local;
+        }
         local.point = ray.source + t1 * d;
-        local.normal = (local.point - origin).normalized();
+        local.normal = local.point - origin;
         local.tHit = t1;
         local.isHit = true;
     }
 
-    // float t2 = (-(d.dot(ec)) + sqrt(discr)) / (d.dot(d));
-
+//    float t2 = (-(d.dot(ec)) + sqrt(discr)) / (d.dot(d));
     return local;
 }
 
@@ -90,108 +104,65 @@ LocalGeo Sphere::intersect(const Ray& ray) const {
 class Triangle : public Shape
 {
 public:
-	Triangle();
-	Triangle(const Eigen::Vector4f& inVertexA, const Eigen::Vector4f& inVertexB, const Eigen::Vector4f& inVertexC);
-	bool isHit(const Ray& ray) const;
-	LocalGeo intersect(const Ray& ray) const;
-	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    Triangle();
+    Triangle(const Eigen::Vector3f& inVertexA, const Eigen::Vector3f& inVertexB, const Eigen::Vector3f& inVertexC);
+    bool isHit(const Ray& ray) const;
+    LocalGeo intersect(const Ray& ray) const;
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 private:
-	Eigen::Vector4f vertexA;
-	Eigen::Vector4f vertexB;
-	Eigen::Vector4f vertexC;
+    Eigen::Vector3f vertexA, vertexB, vertexC;
 };
 
-Triangle::Triangle(const Eigen::Vector4f& inVertexA, const Eigen::Vector4f& inVertexB, const Eigen::Vector4f& inVertexC){
-	vertexA = inVertexA;
-	vertexB = inVertexB;
-	vertexC = inVertexC; 
+Triangle::Triangle(const Eigen::Vector3f& inVertexA, const Eigen::Vector3f& inVertexB, const Eigen::Vector3f& inVertexC){
+    vertexA = inVertexA;
+    vertexB = inVertexB;
+    vertexC = inVertexC;
 }
 
 bool Triangle::isHit(const Ray& r) const {
-	return false; 
+    return false;
 }
 
 LocalGeo Triangle::intersect(const Ray& ray) const {
 
-	LocalGeo local;
-	
-	float a = vertexA[0] - vertexB[0];
-	float b = vertexA[1] - vertexB[1];;
-	float c = vertexA[2] - vertexB[2];;
+    LocalGeo local;
+    Eigen::Vector3f d(ray.direction[0], ray.direction[1], ray.direction[2]);
+    Eigen::Vector3f s(ray.source[0], ray.source[1], ray.source[2]);
 
-	float d = vertexA[0] - vertexC[0];
-	float e = vertexA[1] - vertexC[1];
-	float f = vertexA[2] - vertexC[2];
-	
-	float g = ray.direction[0]; 
-	float h = ray.direction[1];
-	float i = ray.direction[2];
-	
-	float j = vertexA[0] - ray.source[0];
-	float k = vertexA[1] - ray.source[1];
-	float l = vertexA[2] - ray.source[2];
+    Eigen::Vector3f ab = vertexA - vertexB;
+    Eigen::Vector3f ac = vertexA - vertexC;
+    Eigen::Vector3f as = vertexA - s;
+    Eigen::Vector3f n = ab.cross(ac);
 
-	float eihf = e*i - h*f;
-	float gfdi = g*f - d*i;
-	float dheg = d*h - e*g;
+    float M = d.dot(n);
+    // TODO: check for parallel rays maybe??
 
-	float akjb = a*k - j*b; 
-	float jcal = j*c - a*l; 
-	float blkc = b*l - k*c;
+    float t = as.dot(n) / M;
+    if (t < ray.t_min || t > ray.t_max) {
+        local.isHit = false;
+        return local;
+    }
 
-	float M = a*eihf + b*gfdi + c*dheg;
+    Eigen::Vector3f asCrossD = as.cross(d);
 
-	float Beta  = ((j*eihf) + (k*gfdi) + (l*dheg)) / M;
-	float Gamma = ((i*akjb) + (h*jcal) + (g*blkc)) / M;
-	float t = -1 * ((f*akjb) + (e*jcal) + (d*blkc)) / M;
+    float beta = ac.dot(-asCrossD) / M;
+    if (beta < 0 || beta > 1) {
+        local.isHit = false;
+        return local;
+    }
 
+    float gamma = ab.dot(asCrossD) / M;
+    if (gamma < 0 || gamma > 1 - beta) {
+        local.isHit = false;
+        return local;
+    }
 
-	Eigen::Vector4f V = vertexB - vertexA; 
-	Eigen::Vector4f W = vertexC - vertexA;
+    local.isHit = true;
+    local.point = ray.source + t * ray.direction;
+    local.tHit = t;
+    local.normal = Eigen::Vector4f(n[0], n[1], n[2], 0.0f);
 
-	local.normal = ray.source + t * ray.direction;
-
-	if ( !((Beta > 0) && (Gamma > 0) && (Beta + Gamma < 1)) ){
-		local.isHit = false; 
-	}
-	else{
-		local.isHit = true; 
-		local.point = ray.source + t * ray.direction;
-		local.tHit = t;
-
-	}
-	return local;
+    return local;
 }
-
-
-
-
-
-
-//class Triangle : public Shape
-//{
-//public:
-//    Triangle();
-//    Triangle(const Eigen::Vector4f inA, const Eigen::Vector4f& inB, const Eigen::Vector4f& inC);
-//    // include implementation virtual functions for intersection
-//    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-//private:
-//    Eigen::Vector4f a, b, c;
-//};
-//
-//
-//Triangle::Triangle() {
-//    Eigen::Vector4f zero(0, 0, 0, 1);
-//    a = zero;
-//    b = zero;
-//    c = zero;
-//}
-//
-//
-//Triangle::Triangle(const Eigen::Vector4f& inA, const Eigen::Vector4f& inB, const Eigen::Vector4f& inC) {
-//    a = inA;
-//    b = inB;
-//    c = inC;
-//}
 
 #endif
