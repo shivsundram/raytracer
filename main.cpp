@@ -3,12 +3,11 @@
 #include <sstream>
 #include <stdexcept>
 #include <algorithm>
+#include <iterator>
 #include <vector>
 #include <time.h>
 #include <limits>
 #include <sys/time.h>
-#include <iterator>
-#include <cmath>
 
 #include <Eigen/Dense>
 #include <Eigen/StdVector>
@@ -22,56 +21,60 @@
 #include "Scene.h"
 #include "Ray.h"
 #include "ObjParser.h"
+#include "AABBNode.h"
 
 
 using namespace std;
 
 /************ FROM SCENE CLASS ************/
 
-Eigen::Vector4d eye(0.0f, 0.0f, 0.0f, 1.0f);
-Eigen::Vector4d UL(-1.0f, 1.0f, -1.0f, 1.0f);
-Eigen::Vector4d UR(1.0f, 1.0f, -1.0f, 1.0f);
-Eigen::Vector4d LL(1.0f, -1.0f, -1.0f, 1.0f);
-Eigen::Vector4d LR(-1.0f, -1.0f, -1.0f, 1.0f);
+Eigen::Vector4d eye(0.0, 0.0, 0.0, 1.0);
+Eigen::Vector4d UL(-1.0, 1.0, -1.0, 1.0);
+Eigen::Vector4d UR(1.0, 1.0, -1.0, 1.0);
+Eigen::Vector4d LL(1.0, -1.0, -1.0, 1.0);
+Eigen::Vector4d LR(-1.0, -1.0, -1.0, 1.0);
 Eigen::Vector4d xvec; // horizontal basis vector of focal plane
 Eigen::Vector4d yvec; // vertical basis vector of focal plane
 int height = 1000;
 int width = 1000;
 int depth = 10;
-int samplesPerPixel=1; 
+int sqrtSsamplePerPixel= 4;
+
+double randomNumbers[2048];
+
+AABBNode rootAABB;
+
 
 vector<Primitive*> primitives;
 vector<Transformation*> transforms;
 vector<Light*> lights;
 
 Material currentMaterial;
-Material tiledMaterial; 
-ALight globalAmbient(Color(0.0f, 0.0f, 0.0f));
-
+ALight globalAmbient(Color(0.0, 0.0, 0.0));
 
 
 Ray generateRay(double scaleWidth, double scaleHeight) {
     double focalplane = (UL + xvec * scaleWidth + yvec * scaleHeight)[2];
-    Eigen::Vector4d pixel_loc = Eigen::Vector4d(UL[0] + xvec[0] * scaleWidth , UL[0]+ yvec[1] * scaleHeight, focalplane, 1.0f);
+    Eigen::Vector4d pixel_loc = Eigen::Vector4d(UL[0] + xvec[0] * scaleWidth, UL[0]+ yvec[1] * scaleHeight, focalplane, 1.0);
     Eigen::Vector4d direction = pixel_loc - eye;
     direction.normalize();
     return Ray(eye, direction, focalplane, numeric_limits<double>::infinity());
 }
 
 
-
 Color trace(const Ray& ray, const vector<Primitive*>& primitives, int depth){
 
     if (depth == 0) {
-        return Color(0.0f, 0.0f, 0.0f);
+        return Color(0.0, 0.0, 0.0);
     }
 
     double closest_t = numeric_limits<double>::infinity();
     Intersection closestInter, intersect;
     bool isPrimitiveHit = false;
 
-        for (int i = 0; i < primitives.size(); i++) {
-        intersect = primitives[i]->intersect(ray);
+    vector<const Primitive*> relevant = rootAABB.getRelevantPrimitives(ray);
+    for (int i = 0; i < relevant.size(); i++) {
+        intersect = relevant[i]->intersect(ray);
         if (intersect.local.isHit && intersect.local.tHit < closest_t){
             isPrimitiveHit = true;
             closest_t = intersect.local.tHit;
@@ -80,14 +83,14 @@ Color trace(const Ray& ray, const vector<Primitive*>& primitives, int depth){
     }
 
     if (!isPrimitiveHit) {
-        return Color(0.0f, 0.0f, 0.0f);
+        return Color(0.0, 0.0, 0.0);
     }
 
 
     // calculate color
-    Color rgbSpecular(0.0f, 0.0f, 0.0f);
-    Color rgbDiffuse(0.0f, 0.0f, 0.0f);
-    Color rgbAmbient(0.0f, 0.0f, 0.0f);
+    Color rgbSpecular(0.0, 0.0, 0.0);
+    Color rgbDiffuse(0.0, 0.0, 0.0);
+    Color rgbAmbient(0.0, 0.0, 0.0);
 
     Eigen::Vector4d surfacepoint = closestInter.local.point;
 
@@ -99,9 +102,9 @@ Color trace(const Ray& ray, const vector<Primitive*>& primitives, int depth){
     v.normalize();
 
     Material primitiveBRDF = closestInter.primitive->getBRDF();
-    double specularDot = 0.0f;
-    double diffuseDot = 0.0f;
-    double scaleSpecular = 0.0f;
+    double specularDot = 0.0;
+    double diffuseDot = 0.0;
+    double scaleSpecular = 0.0;
 
     for (int i = 0; i < lights.size(); i++){
 
@@ -109,13 +112,15 @@ Color trace(const Ray& ray, const vector<Primitive*>& primitives, int depth){
         Eigen::Vector4d l = lights[i]->getLightVector(surfacepoint);
 
         Color lightColor = lights[i]->getColor();
-
+        //rgbAmbient = rgbAmbient + lightColor;
 
         // shadows
         bool isShadowHit = false;
-        Ray shadowRay(surfacepoint, l, 0.0f, numeric_limits<double>::infinity());
-        for (int x = 0; x < primitives.size(); x++) {
-            intersect = primitives[x]->intersect(shadowRay);
+        Ray shadowRay(surfacepoint, l, 0.0, numeric_limits<double>::infinity());
+
+        vector<const Primitive*> relevantShadow = rootAABB.getRelevantPrimitives(shadowRay);
+        for (int x = 0; x < relevantShadow.size(); x++) {
+            intersect = relevantShadow[x]->intersect(shadowRay);
             if (intersect.local.isHit && closestInter.primitive != intersect.primitive){
                 isShadowHit = true;
                 break;
@@ -134,7 +139,6 @@ Color trace(const Ray& ray, const vector<Primitive*>& primitives, int depth){
         }
         //end fallof
 
-        //need to do this now
         rgbAmbient = rgbAmbient + falloffcoeff*lightColor;
 
         if (isShadowHit) {
@@ -144,61 +148,69 @@ Color trace(const Ray& ray, const vector<Primitive*>& primitives, int depth){
         // reflected
         Eigen::Vector4d r = l - 2 * l.dot(n) * n;
         r.normalize();
+
         specularDot = r.dot(v);
         diffuseDot = n.dot(l);
 
-
-        if (specularDot > 0.0f) {
-            scaleSpecular = powf(specularDot, primitiveBRDF.specularExponent);
+        if (specularDot > 0.0) {
+            scaleSpecular = pow(specularDot, primitiveBRDF.specularExponent);
             rgbSpecular = rgbSpecular + falloffcoeff * lightColor * scaleSpecular;
         }
 
-        if (diffuseDot > 0.0f) {
+        if (diffuseDot > 0.0) {
             rgbDiffuse = rgbDiffuse + falloffcoeff * lightColor * diffuseDot;
-        }        
+        }
     }
-
-
 
     rgbAmbient = (rgbAmbient + globalAmbient.getColor()) * primitiveBRDF.ambient;
     rgbDiffuse = rgbDiffuse * primitiveBRDF.diffuse;
     rgbSpecular = rgbSpecular * primitiveBRDF.specular;
 
-    Eigen::Vector4d rd = v - 2 * v.dot(n) * n;
+    Eigen::Vector4d rd = v - 2 * n.dot(v) * n;
     rd.normalize();
 
-    Ray reflect(surfacepoint, rd, 0.0f, numeric_limits<double>::infinity());
-    if (primitiveBRDF.isDielectric){
+    Ray reflect(surfacepoint, rd, 0.0, numeric_limits<double>::infinity());
+
+    Color rgbReflected;
+
+
+    if (primitiveBRDF.isReflective) {
+        rgbReflected =  primitiveBRDF.reflective * trace(reflect, primitives, depth - 1);
+    }
+
+// CREDITS:
+// CODE FOR REFRACTIONS WAS ADAPTED FROM
+// THE FOLLOWING EDUCATIONAL WEBSITE: https://www.cs.unc.edu/~rademach/xroads-RT/RTarticle.html
+
+    if (primitiveBRDF.isDielectric && primitiveBRDF.refractionCoeff != 0.0){
         Eigen::Vector4d refract;
-        Eigen::Vector4d d=v;
-        float n1 = 1; 
-        float n2 = 1.33;  
-        float c = -d.dot(n);
-        if (d.dot(n) <0){ //entering sphere
-            float c1 = - n.dot(d);
-            float nc= n1/n2; 
-            float c2 = sqrt(1-nc*nc*(1-c1*c1));
-            refract=nc*d + (nc*c1-c2)*n;
-        }   
-        else{ // leaving sphere
-            float c1 = - n.dot(d);
-            float n2 = 1; 
-            float n1 = 1.33;  
-            float nc= n1/n2; 
-            float c2 = sqrt(1-nc*nc*(1-c1*c1));
-            refract=nc*d + (nc*c1-c2)*n;
-            c= refract.dot(n);
+        double n1 = 1;
+        double n2 = primitiveBRDF.refractionCoeff;
+        double c = -n.dot(v);
+        double c1 = c;
+        double nc, c2;
+        if (-c < 0){ //entering sphere
+            nc = n1 / n2;
+            c2 = sqrt(1 - nc * nc * (1 - c1 * c1));
+            refract = nc * v + (nc * c1 - c2) * n;
+        } else { // leaving sphere
+            n2 = 1.0;
+            n1 = primitiveBRDF.refractionCoeff;
+            nc = n1 / n2;
+            c2 = sqrt(1 - nc * nc * (1 - c1 * c1));
+            refract = nc * v + (nc * c1 - c2)*n;
+            c = refract.dot(n);
         }
-        float R0 = ((n2-1)/(n2+1))*((n2-1)/(n2+1)); 
-        float R = R0+(1-R0)*powf(1-c, 5); 
-        if ((1-R)>0){
+        double R0 = pow((n2 - 1)/(n2 + 1), 2);
+        double R = R0 + (1.0 - R0) * pow(1.0 - c, 5.0);
+
+        if (1.0 - R > 0.0){
             Ray refr(surfacepoint, refract, 0.0f, numeric_limits<double>::infinity());
-            return  R* trace(reflect, primitives, depth - 1) + (1-R)*trace(refr, primitives, depth);
+            return R * rgbReflected + (1.0 - R) * trace(refr, primitives, depth);
         }
     }
 
-
-    return rgbDiffuse + rgbSpecular + rgbAmbient + primitiveBRDF.reflective * trace(reflect, primitives, depth - 1);
+    return rgbDiffuse + rgbSpecular + rgbAmbient + rgbReflected;
 }
 
 
@@ -221,19 +233,23 @@ void parseLine(const string& line) {
 
     if (tokens[0] == "cam") {
         checkNumArguments(tokens, 15);
-        eye = Eigen::Vector4d(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()), 1.0f);
-        LL = Eigen::Vector4d(atof(tokens[4].c_str()), atof(tokens[5].c_str()), atof(tokens[6].c_str()), 1.0f);
-        LR = Eigen::Vector4d(atof(tokens[7].c_str()), atof(tokens[8].c_str()), atof(tokens[9].c_str()), 1.0f);
-        UL = Eigen::Vector4d(atof(tokens[10].c_str()), atof(tokens[11].c_str()), atof(tokens[12].c_str()), 1.0f);
-        UR = Eigen::Vector4d(atof(tokens[13].c_str()), atof(tokens[14].c_str()), atof(tokens[15].c_str()), 1.0f);
+        eye = Eigen::Vector4d(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()), 1.0);
+        LL = Eigen::Vector4d(atof(tokens[4].c_str()), atof(tokens[5].c_str()), atof(tokens[6].c_str()), 1.0);
+        LR = Eigen::Vector4d(atof(tokens[7].c_str()), atof(tokens[8].c_str()), atof(tokens[9].c_str()), 1.0);
+        UL = Eigen::Vector4d(atof(tokens[10].c_str()), atof(tokens[11].c_str()), atof(tokens[12].c_str()), 1.0);
+        UR = Eigen::Vector4d(atof(tokens[13].c_str()), atof(tokens[14].c_str()), atof(tokens[15].c_str()), 1.0);
     } else if (tokens[0] == "sph") {
         checkNumArguments(tokens, 4);
         Transformation* currentTransform = new Transformation();
         currentTransform = currentTransform->compose(transforms);
 
-        Sphere* sphere = new Sphere(Eigen::Vector4d(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()), 1.0f), atof(tokens[4].c_str()));
+        currentMaterial.isDielectric = true;
+
+        Sphere* sphere = new Sphere(Eigen::Vector4d(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()), 1.0), atof(tokens[4].c_str()));
 
         primitives.push_back(new GeometricPrimitive(sphere, currentMaterial, currentTransform));
+
+        currentMaterial.isDielectric = false;
 
     } else if (tokens[0] == "tri") {
         checkNumArguments(tokens, 9);
@@ -247,45 +263,6 @@ void parseLine(const string& line) {
 
         primitives.push_back(new GeometricPrimitive(triangle, currentMaterial, currentTransform));
 
-    } else if (tokens[0] == "rect") {
-        checkNumArguments(tokens, 9);
-        Transformation* currentTransform = new Transformation();
-        currentTransform = currentTransform->compose(transforms);
-        Eigen::Vector3d a(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
-        Eigen::Vector3d b(atof(tokens[4].c_str()), atof(tokens[5].c_str()), atof(tokens[6].c_str()));
-        Eigen::Vector3d c(atof(tokens[7].c_str()), atof(tokens[8].c_str()), atof(tokens[9].c_str()));
-
-        Rectangle* rectangle = new Rectangle(a, b, c);
-
-        primitives.push_back(new GeometricPrimitive(rectangle, currentMaterial, currentTransform));
-
-    } else if (tokens[0] == "check") {
-        checkNumArguments(tokens, 6);
-        Transformation* currentTransform = new Transformation();
-        currentTransform = currentTransform->compose(transforms);
-
-        Eigen::Vector3d source(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
-        Eigen::Vector3d xvec(atof(tokens[4].c_str()), atof(tokens[5].c_str()), atof(tokens[6].c_str()));
-        Eigen::Vector3d yvec(atof(tokens[7].c_str()), atof(tokens[8].c_str()), atof(tokens[9].c_str()));
-        float width = atof(tokens[10].c_str());
-        float height = atof(tokens[11].c_str());
-        float dim = atof(tokens[12].c_str());
-
-        xvec.normalize();
-        yvec.normalize();
-        for (int i=0; i<width;i++){
-            for(int j=0; j<height; j++){
-                Eigen::Vector3d start= source+dim*i*xvec+dim*j*yvec; 
-                Rectangle* rectangle = new Rectangle(start, start+dim*xvec, start+dim*yvec);
-                if((i+j)%2==0){
-                    primitives.push_back(new GeometricPrimitive(rectangle, currentMaterial, currentTransform));
-                }
-                else{
-                    primitives.push_back(new GeometricPrimitive(rectangle, tiledMaterial, currentTransform));
-                }
-            }
-        }
-
     } else if (tokens[0] == "obj") {
         checkNumArguments(tokens, 1);
         Transformation* currentTransform = new Transformation();
@@ -295,27 +272,24 @@ void parseLine(const string& line) {
 
         vector<Triangle*> ts = object.getTriangles();
 
-        vector<Primitive*>* aggregate = new vector<Primitive*>;
 
         for (int i = 0; i < ts.size(); i++) {
-            aggregate->push_back(new GeometricPrimitive(ts[i], currentMaterial, currentTransform));
+            primitives.push_back(new GeometricPrimitive(ts[i], currentMaterial, currentTransform));
         }
-
-        primitives.push_back(new AggregatePrimitive(*aggregate));
 
     } else if (tokens[0] == "ltp") {
         checkNumArguments(tokens, 6);
         // there is an optional argument
-        double falloff = 0.0f;
+        double falloff = 0.0;
         if (tokens.size() - 1 > 6) {
             falloff = atof(tokens[7].c_str());
         }
-        Eigen::Vector4d* source = new Eigen::Vector4d(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()), 1.0f);
+        Eigen::Vector4d* source = new Eigen::Vector4d(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()), 1.0);
         PLight* pointLight = new PLight(Color(atof(tokens[4].c_str()), atof(tokens[5].c_str()), atof(tokens[6].c_str())), *source, falloff);
         lights.push_back(pointLight);
     } else if (tokens[0] == "ltd") {
         checkNumArguments(tokens, 6);
-        Eigen::Vector4d* source = new Eigen::Vector4d(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()), 0.0f);
+        Eigen::Vector4d* source = new Eigen::Vector4d(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()), 0.0);
         DLight* dirLight = new DLight(Color(atof(tokens[4].c_str()), atof(tokens[5].c_str()), atof(tokens[6].c_str())), *source);
         lights.push_back(dirLight);
     } else if (tokens[0] == "lta") {
@@ -328,18 +302,16 @@ void parseLine(const string& line) {
         currentMaterial.specular = Color(atof(tokens[7].c_str()), atof(tokens[8].c_str()), atof(tokens[9].c_str()));
         currentMaterial.specularExponent = atof(tokens[10].c_str());
         currentMaterial.reflective = Color(atof(tokens[11].c_str()), atof(tokens[12].c_str()), atof(tokens[13].c_str()));
-        currentMaterial.isDielectric=0;
-        if (tokens.size()-1>13){
-            currentMaterial.isDielectric=atof(tokens[14].c_str());
+        if (currentMaterial.reflective.getRed() != 0.0 || currentMaterial.reflective.getGreen() != 0.0 || currentMaterial.reflective.getBlue() != 0.0) {
+            currentMaterial.isReflective = true;
         }
-    }else if (tokens[0]=="tmat"){
-        checkNumArguments(tokens, 13);
-        tiledMaterial.ambient = Color(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
-        tiledMaterial.diffuse = Color(atof(tokens[4].c_str()), atof(tokens[5].c_str()), atof(tokens[6].c_str()));
-        tiledMaterial.specular = Color(atof(tokens[7].c_str()), atof(tokens[8].c_str()), atof(tokens[9].c_str()));
-        tiledMaterial.specularExponent = atof(tokens[10].c_str());
-        tiledMaterial.reflective = Color(atof(tokens[11].c_str()), atof(tokens[12].c_str()), atof(tokens[13].c_str()));
-    }else if (tokens[0] == "xft") {
+
+        if (tokens.size() - 1 == 14) {
+            currentMaterial.refractionCoeff = atof(tokens[14].c_str());
+        } else {
+            currentMaterial.refractionCoeff = 0.0;
+        }
+    } else if (tokens[0] == "xft") {
         checkNumArguments(tokens, 3);
         transforms.push_back(new Translation(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str())));
     } else if (tokens[0] == "xfr") {
@@ -397,10 +369,11 @@ int main(int argc, const char * argv[]) {
     if (argc >= 2) {
         fin.open(argv[1]);
 
-        if (argc == 5) {
+        if (argc == 6) {
             width = atoi(argv[2]);
             height = atoi(argv[3]);
             depth = atoi(argv[4]);
+            sqrtSsamplePerPixel = atoi(argv[5]);
         }
 
 
@@ -423,6 +396,15 @@ int main(int argc, const char * argv[]) {
         cout << "Invalid argument." << endl;
     }
 
+    cout << "Constructing acceleration structure..." << endl;
+
+    // acceleration
+    rootAABB.constructTree(primitives);
+
+
+    for (int i = 0; i < 2048; i++) {
+        randomNumbers[i] = (double) rand() /  RAND_MAX;
+    }
 
     xvec = UR - UL;
     yvec = UL - LL;
@@ -433,10 +415,14 @@ int main(int argc, const char * argv[]) {
     int pixelCount = 0;
     int fraction = width * height / 10;
     double totalPixelsScale = 100.0 / (width * height);
-
-
+    int currRandomIndex = 0;
+    double aax, aay;
+    Ray temp;
+    Color result;
     cout << "Raytracing..." << endl;
     timestamp_t t0 = get_timestamp();
+
+    double skwiggle = 0.0;
 
     for (int i = 0; i < width; i++){
         for (int j = 0; j < height; j++){
@@ -444,16 +430,16 @@ int main(int argc, const char * argv[]) {
             if (pixelCount % fraction == 0) {
                 cout << (int) (pixelCount * totalPixelsScale) << "%" << endl;
             }
-            for (int k=0; k<samplesPerPixel; k++){
-                double aax =  (double) rand() /  RAND_MAX; 
-                double aay = (double) rand() / RAND_MAX; 
-                Ray temp = generateRay(((double) (i+aax)) / ((double) width), ((double) (j+aay)) / ((double) height));
-                Color result = trace(temp, primitives, depth) * 255.0f;
-                negative.commit(i, height - j - 1, fmin(result.getRed(), 255.0f), fmin(result.getGreen(), 255.0f), fmin(result.getBlue(), 255.0f));
+            for (int p = 0; p < sqrtSsamplePerPixel; p++) {
+                for (int q = 0; q < sqrtSsamplePerPixel; q++) {
+                    skwiggle = (double) rand() /  RAND_MAX;
+                    aax = (p + skwiggle) / sqrtSsamplePerPixel;
+                    aay = (q + skwiggle) / sqrtSsamplePerPixel;
+                    temp = generateRay((i + aax) / width, (j + aay) / height);
+                    result = trace(temp, primitives, depth);
+                    negative.commit(i, height - j - 1, result * 255.0f);
+                }
             }
-
-            //FIX ME: currently only supporting one sample per pixel
-            //negative.commit(i, j, 255*i/width, 255*j/height, 200) activate this for pretty colors
         }
     }
 
