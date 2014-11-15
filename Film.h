@@ -6,6 +6,8 @@
 #include <vector>
 #include <iostream>
 
+#include "Color.h"
+
 using namespace std;
 
 
@@ -26,45 +28,39 @@ using namespace std;
 
 class Bucket{
 public:
-    int n; 
-    Color c; 
+    int n;
+    Color c;
     Bucket();
-    void add(double r, double g, double b);
+    void add(Color);
 
 };
 
 Bucket::Bucket(){
-    Color initial(1.0f, 0.0f, 0.0f);
-    c = initial; 
+    Color initial(0.0, 0.0, 0.0);
+    c = initial;
     n=0;
 }
 
-void Bucket::add(double r, double g, double b){
-   // double red=(c.getRed()*n+r)/( (double) (n+1));
-    //double green=(c.getGreen()*n+g)/( (double) (n+1));
-    //double blue=(c.getBlue()*n+b)/;
-    double red=(c.getRed()+r);
-    double green=(c.getGreen()+g);
-    double blue=(c.getBlue()+b);
-    c=Color(red, green, blue);
-    n=n+1; 
+void Bucket::add(Color inC){
+    c = c + inC;
+    n++;
 }
 
 class Film {
 
 private:
     int width, height;
-    vector<Bucket> buckets; 
+    vector<Bucket> buckets;
     vector<unsigned char> image;
 public:
     Film(int widthIn, int heightIn);
-    void writeImage();
-    void commit(int x, int y, double r, double g, double b);
-    void convert(); 
+    void writeImage(const char* name);
+    void commit(int x, int y, Color c);
+    void convert();
 };
 
-void Film::commit(int x, int y, double r, double g, double b){
-    buckets[width * y + x].add(r,g,b);
+void Film::commit(int x, int y, Color c){
+    buckets[width * y + x].add(c);
 }
 
 Film::Film(int widthIn, int heightIn){
@@ -79,12 +75,13 @@ Film::Film(int widthIn, int heightIn){
     }
 }
 
-void Film::writeImage() {
+void Film::writeImage(const char* name) {
     //NOTE: this sample will overwrite the file or rayprint.png without warning!
-    const char* filename = "rayprint.png";
+
+
     convert();
     //Encode the image
-    unsigned error = lodepng::encode(filename, image, width, height);
+    unsigned error = lodepng::encode(name, image, width, height);
     //if there's an error, display it
     if (error) cout << "encoder error " << error << ": " << lodepng_error_text(error) << endl;
 }
@@ -95,10 +92,10 @@ void Film::convert() {
     for (int y=0; y<height; y++){
         for (int x=0; x<width; x++){
             double count = buckets[width * y + x].n;
-            image[4 * width * y + 4 * x + 0] = buckets[width * y + x].c.getRed() / count; //RED
-            image[4 * width * y + 4 * x + 1] = buckets[width * y + x].c.getGreen() / count ;
-            image[4 * width * y + 4 * x + 2] = buckets[width * y + x].c.getBlue() / count;
-            image[4 * width * y + 4 * x + 3] = 255; //ALPHA for controlling transaperncy: MAINTAIN AT 255   
+            image[4 * width * y + 4 * x + 0] = fmin(buckets[width * y + x].c.getRed() / count, 255.0f); //RED
+            image[4 * width * y + 4 * x + 1] = fmin(buckets[width * y + x].c.getGreen() / count, 255.0f);
+            image[4 * width * y + 4 * x + 2] = fmin(buckets[width * y + x].c.getBlue() / count, 255.0f);
+            image[4 * width * y + 4 * x + 3] = 255.0; //ALPHA for controlling transaperncy: MAINTAIN AT 255
         }
     }
 }

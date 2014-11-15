@@ -39,8 +39,7 @@ int height = 1000;
 int width = 1000;
 int depth = 10;
 int sqrtSsamplePerPixel= 4;
-
-double randomNumbers[2048];
+const char* filename; 
 
 AABBNode rootAABB;
 
@@ -50,7 +49,7 @@ vector<Transformation*> transforms;
 vector<Light*> lights;
 
 Material currentMaterial;
-Material tiledMaterial; 
+Material tiledMaterial;
 ALight globalAmbient(Color(0.0, 0.0, 0.0));
 
 
@@ -113,7 +112,7 @@ Color trace(const Ray& ray, const vector<Primitive*>& primitives, int depth){
         Eigen::Vector4d l = lights[i]->getLightVector(surfacepoint);
 
         Color lightColor = lights[i]->getColor();
-        //rgbAmbient = rgbAmbient + lightColor;
+        rgbAmbient = rgbAmbient + lightColor;
 
         // shadows
         bool isShadowHit = false;
@@ -128,20 +127,6 @@ Color trace(const Ray& ray, const vector<Primitive*>& primitives, int depth){
             }
         }
 
-        //falloff
-        double falloffcoeff=1;
-        PLight* p;
-        int pointlight=1; 
-        if (lights[i]->getType()==pointlight){
-            p = dynamic_cast<PLight*>(lights[i]);
-            Eigen::Vector4d dist= p->getSource() - surfacepoint;
-            double distance = sqrt((dist).dot(dist)); 
-            falloffcoeff=1/(powf(distance, p->getFalloff()));
-        }
-        //end fallof
-
-        rgbAmbient = rgbAmbient + falloffcoeff*lightColor;
-
         if (isShadowHit) {
             continue;
         }
@@ -155,11 +140,11 @@ Color trace(const Ray& ray, const vector<Primitive*>& primitives, int depth){
 
         if (specularDot > 0.0) {
             scaleSpecular = pow(specularDot, primitiveBRDF.specularExponent);
-            rgbSpecular = rgbSpecular + falloffcoeff * lightColor * scaleSpecular;
+            rgbSpecular = rgbSpecular + lightColor * scaleSpecular;
         }
 
         if (diffuseDot > 0.0) {
-            rgbDiffuse = rgbDiffuse + falloffcoeff * lightColor * diffuseDot;
+            rgbDiffuse = rgbDiffuse + lightColor * diffuseDot;
         }
     }
 
@@ -179,15 +164,10 @@ Color trace(const Ray& ray, const vector<Primitive*>& primitives, int depth){
         rgbReflected =  primitiveBRDF.reflective * trace(reflect, primitives, depth - 1);
     }
 
-// CREDITS:
-// CODE FOR REFRACTIONS WAS ADAPTED FROM
-// THE FOLLOWING EDUCATIONAL WEBSITE: https://www.cs.unc.edu/~rademach/xroads-RT/RTarticle.html
-
     if (primitiveBRDF.isDielectric && primitiveBRDF.refractionCoeff != 0.0){
         Eigen::Vector4d refract;
         double n1 = 1;
         double n2 = primitiveBRDF.refractionCoeff;
-       // cout <<n2<<endl;
         double c = -n.dot(v);
         double c1 = c;
         double nc, c2;
@@ -265,36 +245,6 @@ void parseLine(const string& line) {
 
         primitives.push_back(new GeometricPrimitive(triangle, currentMaterial, currentTransform));
 
-    } else if (tokens[0] == "check") {
-        checkNumArguments(tokens, 6);
-        Transformation* currentTransform = new Transformation();
-        currentTransform = currentTransform->compose(transforms);
-
-        Eigen::Vector3d source(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
-        Eigen::Vector3d xvec(atof(tokens[4].c_str()), atof(tokens[5].c_str()), atof(tokens[6].c_str()));
-        Eigen::Vector3d yvec(atof(tokens[7].c_str()), atof(tokens[8].c_str()), atof(tokens[9].c_str()));
-        float width = atof(tokens[10].c_str());
-        float height = atof(tokens[11].c_str());
-        float dim = atof(tokens[12].c_str());
-
-        xvec.normalize();
-        yvec.normalize();
-        for (int i=0; i<width;i++){
-            for(int j=0; j<height; j++){
-                Eigen::Vector3d start= source+dim*i*xvec+dim*j*yvec; 
-                Triangle* rectangle1 = new Triangle(start, start+dim*xvec, start+dim*yvec);
-                Triangle* rectangle2 = new Triangle(start+dim*xvec, start+dim*yvec+dim*xvec,start+dim*yvec);
-                if((i+j)%2==0){
-                    primitives.push_back(new GeometricPrimitive(rectangle1, currentMaterial, currentTransform));
-                    primitives.push_back(new GeometricPrimitive(rectangle2, currentMaterial, currentTransform));
-                }
-                else{
-                    primitives.push_back(new GeometricPrimitive(rectangle1, tiledMaterial, currentTransform));
-                    primitives.push_back(new GeometricPrimitive(rectangle2, tiledMaterial, currentTransform));
-                }
-            }
-        }
-
     } else if (tokens[0] == "obj") {
         checkNumArguments(tokens, 1);
         Transformation* currentTransform = new Transformation();
@@ -313,7 +263,7 @@ void parseLine(const string& line) {
         checkNumArguments(tokens, 6);
         // there is an optional argument
         double falloff = 0.0;
-        if (tokens.size() - 1 > 6) {
+        if (tokens.size() - 1 < 6) {
             falloff = atof(tokens[7].c_str());
         }
         Eigen::Vector4d* source = new Eigen::Vector4d(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()), 1.0);
@@ -359,6 +309,36 @@ void parseLine(const string& line) {
         } else {
             tiledMaterial.refractionCoeff = 0.0;
         }
+    } else if (tokens[0] == "check") {
+        checkNumArguments(tokens, 6);
+        Transformation* currentTransform = new Transformation();
+        currentTransform = currentTransform->compose(transforms);
+
+        Eigen::Vector3d source(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str()));
+        Eigen::Vector3d xvec(atof(tokens[4].c_str()), atof(tokens[5].c_str()), atof(tokens[6].c_str()));
+        Eigen::Vector3d yvec(atof(tokens[7].c_str()), atof(tokens[8].c_str()), atof(tokens[9].c_str()));
+        float width = atof(tokens[10].c_str());
+        float height = atof(tokens[11].c_str());
+        float dim = atof(tokens[12].c_str());
+
+        xvec.normalize();
+        yvec.normalize();
+        for (int i=0; i<width;i++){
+            for(int j=0; j<height; j++){
+                Eigen::Vector3d start= source+dim*i*xvec+dim*j*yvec;
+                Triangle* rectangle1 = new Triangle(start, start+dim*xvec, start+dim*yvec);
+                Triangle* rectangle2 = new Triangle(start+dim*xvec, start+dim*yvec+dim*xvec,start+dim*yvec);
+                if((i+j)%2==0){
+                    primitives.push_back(new GeometricPrimitive(rectangle1, currentMaterial, currentTransform));
+                    primitives.push_back(new GeometricPrimitive(rectangle2, currentMaterial, currentTransform));
+                }
+                else{
+                    primitives.push_back(new GeometricPrimitive(rectangle1, tiledMaterial, currentTransform));
+                    primitives.push_back(new GeometricPrimitive(rectangle2, tiledMaterial, currentTransform));
+                }
+            }
+        }
+
     } else if (tokens[0] == "xft") {
         checkNumArguments(tokens, 3);
         transforms.push_back(new Translation(atof(tokens[1].c_str()), atof(tokens[2].c_str()), atof(tokens[3].c_str())));
@@ -407,12 +387,13 @@ int main(int argc, const char * argv[]) {
         Transformation st = s * t;
         cout << st << endl;
         return 0;
-    }
+    }5
 
 
     cout << "Setting up scene..." << endl;
     ifstream fin;
     string line;
+    filename="rayprint.png";
 
     if (argc >= 2) {
         fin.open(argv[1]);
@@ -423,7 +404,13 @@ int main(int argc, const char * argv[]) {
             depth = atoi(argv[4]);
             sqrtSsamplePerPixel = atoi(argv[5]);
         }
-
+        if (argc == 7) {
+            width = atoi(argv[2]);
+            height = atoi(argv[3]);
+            depth = atoi(argv[4]);
+            sqrtSsamplePerPixel = atoi(argv[5]);
+            filename=argv[6];
+        }
 
         if (!fin.good()) {
             cout << "File \"" << argv[1] << "\" does not exists" << endl;
@@ -449,10 +436,6 @@ int main(int argc, const char * argv[]) {
     // acceleration
     rootAABB.constructTree(primitives);
 
-
-    for (int i = 0; i < 2048; i++) {
-        randomNumbers[i] = (double) rand() /  RAND_MAX;
-    }
 
     xvec = UR - UL;
     yvec = UL - LL;
@@ -495,7 +478,7 @@ int main(int argc, const char * argv[]) {
     cout << "Elapsed time: " << (t1 - t0) / 1000000.0L << endl;
 
     cout << "Saving image..." << endl;
-    negative.writeImage();
+    negative.writeImage(filename);
 
     return 0;
 }

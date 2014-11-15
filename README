@@ -1,0 +1,31 @@
+README
+Assignment 2: raytracer
+
+Author: Andrey Elenskiy  (ID 24728236) (cs170-cz)
+Author: Shiv Sundram     (ID 22653665) (cs170-dq)
+Platform: Unix (Hive)
+
+Location of Source Code: 
+cs184-dq/assignment2/raytracer
+
+How To Build: use following command in "raytracer" directory 
+g++ main.cpp lodepng.cpp -I eigen -O3 -o raytrace
+
+How to Execute: 
+./raytrace [filename.txt] [pixel width] [pixel height] [depth] [sqrt(samples/pixel)]
+
+Example: 
+./raytrace refract.txt 1000 1000 5 2
+
+External Dependencies:
+-Eigen 
+-lodepng
+
+Citations and references are made throughout the code
+
+Features (Bonus Features): 
+
+AABB Tree Acceleration: see AABBNode.h
+Anti-aliasing
+Refraction
+Tiled Surfaces
